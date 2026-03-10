@@ -42,3 +42,10 @@ body {
 .animate-shake {
   animation: shake 0.5s ease-in-out;
 }
+
+@layer utilities {
+  .touch-callout-none {
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}

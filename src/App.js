@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   collection,
   onSnapshot,
@@ -9,17 +9,23 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
+import {
+  getAuth,
+  signInAnonymously,
+  onAuthStateChanged
+} from "firebase/auth";
 import { db } from "./firebase";
-import { getAuth, signInAnonymously, onAuthStateChanged} from "firebase/auth";
 
+const CURRENT_LIST = "currentList";
+const HISTORY = "history";
 
 function App() {
   const [currentList, setCurrentList] = useState([]);
   const [history, setHistory] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [shake, setShake] = useState(false);
-  const inputRef = useRef(null);
   const [authReady, setAuthReady] = useState(false);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const auth = getAuth();
@@ -39,12 +45,12 @@ function App() {
     if (!authReady) return;
 
     const listQuery = query(
-      collection(db, "currentList"),
+      collection(db, CURRENT_LIST),
       orderBy("addedAt", "asc")
     );
 
     const historyQuery = query(
-      collection(db, "history"),
+      collection(db, HISTORY),
       orderBy("lastUsed", "desc")
     );
 
@@ -72,7 +78,7 @@ function App() {
     };
   }, [authReady]);
 
-  const addToList = React.useCallback(async (item) => {
+  const addToList = useCallback(async (item) => {
     if (item.trim() === '') return;
 
     const normalized = item.trim().toLowerCase();
@@ -87,7 +93,7 @@ function App() {
       return;
     }
 
-    await addDoc(collection(db, "currentList"), {
+    await addDoc(collection(db, CURRENT_LIST), {
       text: item.trim(),
       addedAt: Date.now()
     });
@@ -97,12 +103,12 @@ function App() {
     );
 
     if (!existingHistoryItem) {
-      await addDoc(collection(db, "history"), {
+      await addDoc(collection(db, HISTORY), {
         text: item.trim(),
         lastUsed: Date.now()
       });
     } else {
-      await updateDoc(doc(db, "history", existingHistoryItem.id), {
+      await updateDoc(doc(db, HISTORY, existingHistoryItem.id), {
         lastUsed: Date.now()
       });
     }
@@ -111,26 +117,26 @@ function App() {
     inputRef.current?.blur();
   }, [currentList, history]);
 
-  const removeFromList = React.useCallback(async (id) => {
-    await deleteDoc(doc(db, "currentList", id));
+  const removeFromList = useCallback(async (id) => {
+    await deleteDoc(doc(db, CURRENT_LIST, id));
   }, []);
 
-  const removeFromHistory = React.useCallback(async (id) => {
-    await deleteDoc(doc(db, "history", id));
+  const removeFromHistory = useCallback(async (id) => {
+    await deleteDoc(doc(db, HISTORY, id));
   }, []);
 
-  const addFromHistory = React.useCallback(async (historyItem) => {
+  const addFromHistory = useCallback(async (historyItem) => {
     const existingInList = currentList.find(
       i => i.text.toLowerCase() === historyItem.text.toLowerCase()
     );
     if (existingInList) return;
 
-    await addDoc(collection(db, "currentList"), {
+    await addDoc(collection(db, CURRENT_LIST), {
       text: historyItem.text,
       addedAt: Date.now()
     });
 
-    await updateDoc(doc(db, "history", historyItem.id), {
+    await updateDoc(doc(db, HISTORY, historyItem.id), {
       lastUsed: Date.now()
     });
   }, [currentList]);
@@ -157,7 +163,7 @@ function App() {
               {currentList.map((item, index) => (
                 <li
                   key={item.id}
-                  className="relative bg-indigo-50 rounded-lg px-4 py-3 pr-10 transition-all duration-200 hover:bg-indigo-100 hover:scale-105 hover:shadow-sm inline-flex items-center animate-slideIn"
+                  className="relative bg-indigo-50 rounded-lg px-4 py-3 pr-10 transition-all duration-200 hover:bg-indigo-100 hover:scale-105 hover:shadow-sm inline-flex items-center animate-slideIn select-none touch-callout-none"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <span className="text-gray-800 text-base whitespace-nowrap">{item.text}</span>
@@ -206,7 +212,7 @@ function App() {
               {history.map((item, index) => (
                 <li
                   key={item.id}
-                  className="relative bg-gray-50 rounded-lg px-4 py-3 pr-10 cursor-pointer transition-all duration-200 hover:bg-indigo-50 hover:shadow-md hover:scale-105 inline-flex items-center animate-slideIn"
+                  className="relative bg-gray-50 rounded-lg px-4 py-3 pr-10 cursor-pointer transition-all duration-200 hover:bg-indigo-50 hover:shadow-md hover:scale-105 inline-flex items-center animate-slideIn select-none touch-callout-none"
                   style={{ animationDelay: `${index * 50}ms` }}
                   onClick={() => addFromHistory(item)}
                 >
