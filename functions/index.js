@@ -5,25 +5,39 @@ const { getMessaging } = require('firebase-admin/messaging');
 
 initializeApp();
 
-exports.onItemAdded = onDocumentCreated('currentList/{docId}', async (event) => {
-  const data = event.data.data();
-  await sendToAll(
-    '\u{1F6D2} Malvern Shopping List',
-    `"${data.text}" was added`,
-    data.actorUid || null
-  );
-});
+const FUNCTION_OPTS = {
+  maxInstances: 3,          // billing cap: max 3 concurrent executions
+};
 
-exports.onItemRemoved = onDocumentDeleted('currentList/{docId}', async (event) => {
-  const data = event.data.data();
-  await sendToAll(
-    '\u2705 Malvern Shopping List',
-    `"${data.text}" was checked off`,
-    data.removedBy || null
-  );
-});
+exports.onItemAdded = onDocumentCreated(
+  { document: 'currentList/{docId}', ...FUNCTION_OPTS },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+    await sendFiltered(
+      '\u{1F6D2} Malvern Shopping List',
+      `"${data.text}" was added`,
+      data.actorUid || null,
+      'notifyOnAdd'
+    );
+  }
+);
 
-async function sendToAll(title, body, excludeUid) {
+exports.onItemRemoved = onDocumentDeleted(
+  { document: 'currentList/{docId}', ...FUNCTION_OPTS },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+    await sendFiltered(
+      '\u2705 Malvern Shopping List',
+      `"${data.text}" was checked off`,
+      data.removedBy || null,
+      'notifyOnRemove'
+    );
+  }
+);
+
+async function sendFiltered(title, body, excludeUid, preferenceField) {
   const db = getFirestore();
   const messaging = getMessaging();
 
@@ -34,11 +48,15 @@ async function sendToAll(title, body, excludeUid) {
   const tokenToRef = new Map();
 
   snap.docs.forEach((d) => {
-    const { token, uid } = d.data();
-    if (token && uid !== excludeUid) {
-      tokens.push(token);
-      tokenToRef.set(token, d.ref);
-    }
+    const data = d.data();
+    const { token, uid } = data;
+
+    if (!token) return;                        // no token
+    if (uid === excludeUid) return;            // don't notify actor
+    if (data[preferenceField] === false) return; // opted out (undefined = opted in for backcompat)
+
+    tokens.push(token);
+    tokenToRef.set(token, d.ref);
   });
 
   if (tokens.length === 0) return;

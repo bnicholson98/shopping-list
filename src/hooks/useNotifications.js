@@ -6,8 +6,11 @@ import app from '../firebase';
 
 const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY;
 
+const DEFAULT_PREFS = { notifyOnAdd: false, notifyOnRemove: false };
+
 export default function useNotifications() {
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [preferences, setPreferences] = useState(DEFAULT_PREFS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -25,7 +28,8 @@ export default function useNotifications() {
         const user = auth.currentUser;
         if (!user || Notification.permission !== 'granted') return;
 
-        const snap = await getDoc(doc(db, 'fcmTokens', user.uid));
+        const docRef = doc(db, 'fcmTokens', user.uid);
+        const snap = await getDoc(docRef);
         if (!snap.exists()) return;
 
         const reg = await navigator.serviceWorker.getRegistration();
@@ -39,8 +43,23 @@ export default function useNotifications() {
 
         if (token) {
           setIsSubscribed(true);
-          if (snap.data().token !== token) {
-            await setDoc(doc(db, 'fcmTokens', user.uid), { token }, { merge: true });
+          const data = snap.data();
+
+          // Read prefs, defaulting to true if field missing (backcompat)
+          const loaded = {
+            notifyOnAdd: data.notifyOnAdd !== undefined ? data.notifyOnAdd : false,
+            notifyOnRemove: data.notifyOnRemove !== undefined ? data.notifyOnRemove : false,
+          };
+          setPreferences(loaded);
+
+          // Backfill token refresh + missing pref fields in one write
+          const updates = {};
+          if (data.token !== token) updates.token = token;
+          if (data.notifyOnAdd === undefined) updates.notifyOnAdd = false;
+          if (data.notifyOnRemove === undefined) updates.notifyOnRemove = false;
+
+          if (Object.keys(updates).length > 0) {
+            await setDoc(docRef, updates, { merge: true });
           }
         }
       } catch (e) {
@@ -81,9 +100,11 @@ export default function useNotifications() {
       await setDoc(doc(db, 'fcmTokens', user.uid), {
         token,
         uid: user.uid,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        ...DEFAULT_PREFS,
       });
 
+      setPreferences(DEFAULT_PREFS);
       setIsSubscribed(true);
       return true;
     } catch (e) {
@@ -107,6 +128,7 @@ export default function useNotifications() {
       if (user) await deleteDoc(doc(db, 'fcmTokens', user.uid));
 
       setIsSubscribed(false);
+      setPreferences(DEFAULT_PREFS);
     } catch (e) {
       console.error('Unsubscribe failed:', e);
       setError(e.message);
@@ -115,5 +137,31 @@ export default function useNotifications() {
     }
   }, []);
 
-  return { isSupported, isSubscribed, loading, error, subscribe, unsubscribe };
+  const updatePreferences = useCallback(async (updates) => {
+    const previous = { ...preferences };
+    try {
+      // Optimistic UI
+      setPreferences(prev => ({ ...prev, ...updates }));
+
+      const user = auth.currentUser;
+      if (!user) return;
+
+      await setDoc(doc(db, 'fcmTokens', user.uid), updates, { merge: true });
+    } catch (e) {
+      console.error('Preference update failed:', e);
+      setPreferences(previous); // revert
+      setError(e.message);
+    }
+  }, [preferences]);
+
+  return {
+    isSupported,
+    isSubscribed,
+    preferences,
+    loading,
+    error,
+    subscribe,
+    unsubscribe,
+    updatePreferences,
+  };
 }
