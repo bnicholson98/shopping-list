@@ -9,12 +9,9 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
-import {
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged
-} from "firebase/auth";
-import { db } from "./firebase";
+import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { db, auth } from "./firebase";
+import NotificationBell from "./components/NotificationBell";
 
 const CURRENT_LIST = "currentList";
 const HISTORY = "history";
@@ -28,8 +25,6 @@ function App() {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    const auth = getAuth();
-
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
         signInAnonymously(auth).catch(console.error);
@@ -95,7 +90,8 @@ function App() {
 
     await addDoc(collection(db, CURRENT_LIST), {
       text: item.trim(),
-      addedAt: Date.now()
+      addedAt: Date.now(),
+      actorUid: auth.currentUser?.uid || null
     });
 
     const existingHistoryItem = history.find(
@@ -118,6 +114,9 @@ function App() {
   }, [currentList, history]);
 
   const removeFromList = useCallback(async (id) => {
+    await updateDoc(doc(db, CURRENT_LIST, id), {
+      removedBy: auth.currentUser?.uid || null
+    });
     await deleteDoc(doc(db, CURRENT_LIST, id));
   }, []);
 
@@ -133,7 +132,8 @@ function App() {
 
     await addDoc(collection(db, CURRENT_LIST), {
       text: historyItem.text,
-      addedAt: Date.now()
+      addedAt: Date.now(),
+      actorUid: auth.currentUser?.uid || null
     });
 
     await updateDoc(doc(db, HISTORY, historyItem.id), {
@@ -155,7 +155,7 @@ function App() {
         </h1>
 
         {/* Current Shopping List */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 transition-all duration-300 hover:shadow-xl">          
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 transition-all duration-300 hover:shadow-xl">
           {currentList.length === 0 ? (
             <p className="text-gray-400 text-center py-8 animate-pulse">We probably need toilet paper</p>
           ) : (
@@ -204,7 +204,7 @@ function App() {
         {/* History */}
         <div className="bg-white rounded-2xl shadow-lg p-6 transition-all duration-300 hover:shadow-xl">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">History</h2>
-          
+
           {history.length === 0 ? (
             <p className="text-gray-400 text-center py-8">No history yet</p>
           ) : (
@@ -233,6 +233,8 @@ function App() {
           )}
         </div>
       </div>
+
+      {authReady && <NotificationBell />}
     </div>
   );
 }
