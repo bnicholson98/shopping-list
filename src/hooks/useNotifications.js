@@ -70,7 +70,7 @@ export default function useNotifications() {
     })();
   }, [isSupported]);
 
-  const subscribe = useCallback(async () => {
+  const subscribe = useCallback(async (initialPrefs = DEFAULT_PREFS) => {
     if (!isSupported) return false;
     try {
       setLoading(true);
@@ -101,10 +101,10 @@ export default function useNotifications() {
         token,
         uid: user.uid,
         createdAt: serverTimestamp(),
-        ...DEFAULT_PREFS,
+        ...initialPrefs,
       });
 
-      setPreferences(DEFAULT_PREFS);
+      setPreferences(initialPrefs);
       setIsSubscribed(true);
       return true;
     } catch (e) {
@@ -149,7 +149,7 @@ export default function useNotifications() {
       await setDoc(doc(db, 'fcmTokens', user.uid), updates, { merge: true });
     } catch (e) {
       console.error('Preference update failed:', e);
-      setPreferences(previous); // revert
+      setPreferences(previous);
       setError(e.message);
     }
   }, [preferences]);

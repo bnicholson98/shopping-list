@@ -51,72 +51,78 @@ export default function NotificationBell() {
 
   if (!isPWA || !isSupported || loading) return null;
 
-  const allOn = preferences.notifyOnAdd && preferences.notifyOnRemove;
+  // When unsubscribed, render all toggles as off regardless of stored prefs
+  const displayed = isSubscribed
+    ? preferences
+    : { notifyOnAdd: false, notifyOnRemove: false };
+  const allOn = displayed.notifyOnAdd && displayed.notifyOnRemove;
 
-  const handleToggleAll = () => {
-    const next = !allOn;
-    updatePreferences({ notifyOnAdd: next, notifyOnRemove: next });
+  const handleTogglePref = async (key) => {
+    // Not subscribed → user wants to opt in to just this category
+    if (!isSubscribed) {
+      const initialPrefs = {
+        notifyOnAdd: false,
+        notifyOnRemove: false,
+        [key]: true,
+      };
+      await subscribe(initialPrefs);
+      return;
+    }
+
+    const newValue = !preferences[key];
+    const otherKey = key === 'notifyOnAdd' ? 'notifyOnRemove' : 'notifyOnAdd';
+
+    // Turning this off would leave both off → unsubscribe entirely
+    if (!newValue && !preferences[otherKey]) {
+      await unsubscribe();
+    } else {
+      await updatePreferences({ [key]: newValue });
+    }
+  };
+
+  const handleToggleAll = async () => {
+    if (!isSubscribed) {
+      // Subscribe with both on (DEFAULT_PREFS)
+      await subscribe();
+    } else if (allOn) {
+      // All on → all off → unsubscribe
+      await unsubscribe();
+    } else {
+      // Subscribed but some off → turn both on
+      await updatePreferences({ notifyOnAdd: true, notifyOnRemove: true });
+    }
   };
 
   return (
     <div ref={ref} className="fixed bottom-6 right-6 z-50">
       {open && (
         <div className="absolute bottom-14 right-0 bg-white rounded-xl shadow-xl p-4 w-64">
-          {!isSubscribed ? (
-            <button
-              onClick={subscribe}
-              disabled={loading}
-              className="w-full py-2 px-4 rounded-lg text-sm font-medium
-                bg-indigo-600 text-white hover:bg-indigo-700
-                disabled:opacity-50 transition-colors"
-            >
-              Enable Notifications
-            </button>
-          ) : (
-            <>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Notify me when…
-              </p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Notify me when…
+          </p>
 
-              <Toggle
-                label="All"
-                enabled={allOn}
-                onChange={handleToggleAll}
-                disabled={loading}
-              />
+          <Toggle
+            label="All"
+            enabled={allOn}
+            onChange={handleToggleAll}
+            disabled={loading}
+          />
 
-              <div className="border-t border-gray-100 my-1" />
+          <div className="border-t border-gray-100 my-1" />
 
-              <Toggle
-                label="Item added"
-                enabled={preferences.notifyOnAdd}
-                onChange={() =>
-                  updatePreferences({ notifyOnAdd: !preferences.notifyOnAdd })
-                }
-                disabled={loading}
-              />
-              <Toggle
-                label="Item checked off"
-                enabled={preferences.notifyOnRemove}
-                onChange={() =>
-                  updatePreferences({ notifyOnRemove: !preferences.notifyOnRemove })
-                }
-                disabled={loading}
-              />
+          <Toggle
+            label="Item added"
+            enabled={displayed.notifyOnAdd}
+            onChange={() => handleTogglePref('notifyOnAdd')}
+            disabled={loading}
+          />
+          <Toggle
+            label="Item checked off"
+            enabled={displayed.notifyOnRemove}
+            onChange={() => handleTogglePref('notifyOnRemove')}
+            disabled={loading}
+          />
 
-              <div className="border-t border-gray-100 mt-2 pt-2">
-                <button
-                  onClick={unsubscribe}
-                  disabled={loading}
-                  className="w-full py-1.5 px-4 rounded-lg text-xs font-medium
-                    bg-gray-100 text-gray-600 hover:bg-gray-200
-                    disabled:opacity-50 transition-colors"
-                >
-                  Disable Notifications
-                </button>
-              </div>
-            </>
-          )}
           {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
         </div>
       )}
@@ -143,7 +149,7 @@ export default function NotificationBell() {
             strokeLinecap="round"
             strokeLinejoin="round"
             d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-          />
+            />
         </svg>
       </button>
     </div>
