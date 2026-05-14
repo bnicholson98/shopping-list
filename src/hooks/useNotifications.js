@@ -11,7 +11,8 @@ const DEFAULT_PREFS = { notifyOnAdd: false, notifyOnRemove: false };
 export default function useNotifications() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [preferences, setPreferences] = useState(DEFAULT_PREFS);
-  const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const isSupported =
@@ -21,7 +22,7 @@ export default function useNotifications() {
 
   // Check existing subscription on mount
   useEffect(() => {
-    if (!isSupported) { setLoading(false); return; }
+    if (!isSupported) { setInitializing(false); return; }
 
     (async () => {
       try {
@@ -65,7 +66,7 @@ export default function useNotifications() {
       } catch (e) {
         console.error('Notification check failed:', e);
       } finally {
-        setLoading(false);
+        setInitializing(false);
       }
     })();
   }, [isSupported]);
@@ -73,7 +74,7 @@ export default function useNotifications() {
   const subscribe = useCallback(async (initialPrefs = DEFAULT_PREFS) => {
     if (!isSupported) return false;
     try {
-      setLoading(true);
+      setBusy(true);
       setError(null);
 
       const permission = await Notification.requestPermission();
@@ -112,13 +113,13 @@ export default function useNotifications() {
       setError(e.message);
       return false;
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }, [isSupported]);
 
   const unsubscribe = useCallback(async () => {
     try {
-      setLoading(true);
+      setBusy(true);
       setError(null);
 
       const messaging = getMessaging(app);
@@ -133,7 +134,7 @@ export default function useNotifications() {
       console.error('Unsubscribe failed:', e);
       setError(e.message);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }, []);
 
@@ -158,7 +159,8 @@ export default function useNotifications() {
     isSupported,
     isSubscribed,
     preferences,
-    loading,
+    initializing,
+    busy,
     error,
     subscribe,
     unsubscribe,
